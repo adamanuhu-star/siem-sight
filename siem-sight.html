@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SIEM-SIGHT | Security Log Analyzer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .font-mono { font-family: 'JetBrains Mono', monospace; }
+    </style>
+<base target="_blank">
+</head>
+<body class="bg-slate-950 text-slate-200 min-h-screen">
+    <div class="min-h-screen bg-slate-950 text-slate-200 p-6 font-sans">
+        <header class="mb-8 text-center">
+            <h1 class="text-4xl font-bold text-violet-400 tracking-tight">SIEM-SIGHT</h1>
+            <p class="text-slate-500 text-sm mt-2">Security Log Analyzer & Threat Detection Platform</p>
+        </header>
+
+        <div class="max-w-5xl mx-auto space-y-6">
+            <!-- Control Panel -->
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-6">
+                <div class="flex items-center justify-between flex-wrap gap-4">
+                    <div class="flex gap-3 flex-wrap">
+                        <button onclick="loadLogs('auth')" class="bg-violet-900/30 border border-violet-800 text-violet-400 text-xs px-4 py-2 rounded hover:bg-violet-900/50 transition-colors">Load Auth Logs</button>
+                        <button onclick="loadLogs('firewall')" class="bg-orange-900/30 border border-orange-800 text-orange-400 text-xs px-4 py-2 rounded hover:bg-orange-900/50 transition-colors">Load Firewall Logs</button>
+                        <button onclick="loadLogs('web')" class="bg-emerald-900/30 border border-emerald-800 text-emerald-400 text-xs px-4 py-2 rounded hover:bg-emerald-900/50 transition-colors">Load Web Server Logs</button>
+                    </div>
+                    <button onclick="clearLogs()" class="bg-slate-800 text-slate-400 text-xs px-4 py-2 rounded hover:bg-slate-700 transition-colors">Clear</button>
+                </div>
+            </div>
+
+            <!-- Alert Banner -->
+            <div id="alert-banner" class="hidden bg-red-900/20 border border-red-800 rounded-xl p-4 flex items-center gap-3">
+                <span class="text-2xl">🚨</span>
+                <div>
+                    <div class="text-red-400 font-semibold text-sm">SECURITY ALERT DETECTED</div>
+                    <div id="alert-text" class="text-red-300 text-xs">Potential brute-force attack identified</div>
+                </div>
+            </div>
+
+            <!-- KPI Cards -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div class="bg-slate-900 border border-slate-800 rounded-lg p-4 text-center">
+                    <div class="text-2xl font-bold text-violet-400" id="total-events">0</div>
+                    <div class="text-xs text-slate-500 mt-1">Total Events</div>
+                </div>
+                <div class="bg-slate-900 border border-red-800 rounded-lg p-4 text-center">
+                    <div class="text-2xl font-bold text-red-400" id="critical-events">0</div>
+                    <div class="text-xs text-slate-500 mt-1">Critical</div>
+                </div>
+                <div class="bg-slate-900 border border-amber-800 rounded-lg p-4 text-center">
+                    <div class="text-2xl font-bold text-amber-400" id="warning-events">0</div>
+                    <div class="text-xs text-slate-500 mt-1">Warnings</div>
+                </div>
+                <div class="bg-slate-900 border border-emerald-800 rounded-lg p-4 text-center">
+                    <div class="text-2xl font-bold text-emerald-400" id="unique-ips">0</div>
+                    <div class="text-xs text-slate-500 mt-1">Unique IPs</div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- Log Table -->
+                <div class="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+                    <div class="p-4 border-b border-slate-800 flex items-center justify-between flex-wrap gap-3">
+                        <h3 class="text-sm font-semibold text-slate-300 uppercase tracking-wider">Security Events</h3>
+                        <div class="flex gap-2">
+                            <select id="severity-filter" class="bg-slate-800 border border-slate-700 text-xs rounded px-2 py-1 text-slate-300" onchange="filterLogs()">
+                                <option value="all">All Severities</option>
+                                <option value="critical">Critical</option>
+                                <option value="warning">Warning</option>
+                                <option value="info">Info</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="overflow-x-auto max-h-80 overflow-y-auto">
+                        <table class="w-full text-xs">
+                            <thead class="bg-slate-950 text-slate-500 uppercase sticky top-0">
+                                <tr>
+                                    <th class="text-left p-3">Timestamp</th>
+                                    <th class="text-left p-3">Source IP</th>
+                                    <th class="text-left p-3">Event Type</th>
+                                    <th class="text-center p-3">Severity</th>
+                                    <th class="text-left p-3">Message</th>
+                                </tr>
+                            </thead>
+                            <tbody id="log-table" class="divide-y divide-slate-800">
+                                <tr><td colspan="5" class="p-8 text-center text-slate-600">Load logs to begin analysis</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Side Panel -->
+                <div class="space-y-6">
+                    <!-- Attack Timeline -->
+                    <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+                        <h3 class="text-xs text-slate-500 uppercase tracking-wider mb-3">Attack Timeline</h3>
+                        <div id="timeline" class="space-y-2 text-xs"></div>
+                    </div>
+
+                    <!-- Top Attackers -->
+                    <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+                        <h3 class="text-xs text-slate-500 uppercase tracking-wider mb-3">Top Attackers</h3>
+                        <div id="attackers-list" class="space-y-2"></div>
+                    </div>
+
+                    <!-- Event Distribution -->
+                    <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+                        <h3 class="text-xs text-slate-500 uppercase tracking-wider mb-3">Event Types</h3>
+                        <div id="event-types" class="space-y-2"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Brute Force Detection -->
+            <div id="brute-force-panel" class="hidden bg-slate-900 border border-red-800 rounded-xl p-6">
+                <h3 class="text-xs text-slate-500 uppercase tracking-wider mb-4">Brute Force Attack Detection</h3>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4" id="brute-force-details"></div>
+            </div>
+
+            <!-- MITRE ATT&CK Mapping -->
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-6">
+                <h3 class="text-xs text-slate-500 uppercase tracking-wider mb-4">MITRE ATT&CK Mapping</h3>
+                <div id="mitre-mapping" class="grid grid-cols-2 md:grid-cols-4 gap-3"></div>
+            </div>
+
+            <!-- Sigma Rule Generator -->
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-6">
+                <h3 class="text-xs text-slate-500 uppercase tracking-wider mb-3">Auto-Generated Detection Rule (Sigma)</h3>
+                <pre id="sigma-rule" class="font-mono text-xs text-slate-400 bg-slate-950 rounded p-4 overflow-x-auto">Load logs to generate detection rules</pre>
+            </div>
+        </div>
+
+        <footer class="text-center mt-12 text-xs text-slate-600 pb-6">
+            Educational SIEM simulation • No real log data • MITRE ATT&CK framework reference
+        </footer>
+    </div>
+
+    <script>
+        let currentLogs = [];
+
+        const logTemplates = {
+            auth: [
+                { type: 'Failed Login', severity: 'warning', msg: 'Authentication failed for user admin', mitre: 'T1110' },
+                { type: 'Failed Login', severity: 'warning', msg: 'Authentication failed for user root', mitre: 'T1110' },
+                { type: 'Failed Login', severity: 'warning', msg: 'Authentication failed for user administrator', mitre: 'T1110' },
+                { type: 'Successful Login', severity: 'info', msg: 'User admin logged in successfully', mitre: 'T1078' },
+                { type: 'Account Lockout', severity: 'critical', msg: 'Account locked after 5 failed attempts', mitre: 'T1110' },
+                { type: 'Privilege Escalation', severity: 'critical', msg: 'User admin added to sudoers group', mitre: 'T1548' },
+                { type: 'Password Change', severity: 'info', msg: 'Password changed for user admin', mitre: 'T1098' },
+                { type: 'New User Created', severity: 'warning', msg: 'New user account created: backdoor', mitre: 'T1136' },
+            ],
+            firewall: [
+                { type: 'Blocked Connection', severity: 'warning', msg: 'Inbound connection blocked from suspicious IP', mitre: 'T1190' },
+                { type: 'Port Scan', severity: 'critical', msg: 'Potential port scan detected: 50 ports in 2 seconds', mitre: 'T1046' },
+                { type: 'DDoS Detected', severity: 'critical', msg: 'High volume traffic detected from multiple sources', mitre: 'T1498' },
+                { type: 'Outbound Connection', severity: 'warning', msg: 'Suspicious outbound connection to known C2 server', mitre: 'T1071' },
+                { type: 'Allowed Connection', severity: 'info', msg: 'Connection allowed to trusted destination', mitre: null },
+                { type: 'Rule Violation', severity: 'warning', msg: 'Traffic violates security policy: P2P detected', mitre: 'T1105' },
+            ],
+            web: [
+                { type: 'SQL Injection', severity: 'critical', msg: 'SQL injection attempt detected in POST /login', mitre: 'T1190' },
+                { type: 'XSS Attempt', severity: 'warning', msg: 'Cross-site scripting attempt in search parameter', mitre: 'T1189' },
+                { type: 'Directory Traversal', severity: 'critical', msg: 'Path traversal attempt: ../../../etc/passwd', mitre: 'T1083' },
+                { type: '404 Error', severity: 'info', msg: 'Resource not found: /admin/config.php', mitre: null },
+                { type: '200 OK', severity: 'info', msg: 'GET /api/users returned 200', mitre: null },
+                { type: 'Rate Limit', severity: 'warning', msg: 'Rate limit exceeded for IP', mitre: 'T1496' },
+                { type: 'File Upload', severity: 'warning', msg: 'Suspicious file upload: shell.php', mitre: 'T1505' },
+            ]
+        };
+
+        const ipPool = ['192.168.1.100', '10.0.0.15', '172.16.0.22', '203.0.113.45', '198.51.100.77', '185.220.101.42', '45.142.212.100', '91.219.236.180'];
+        const attackerIPs = ['185.220.101.42', '45.142.212.100', '91.219.236.180'];
+
+        function generateLogs(type, count = 50) {
+            const logs = [];
+            const templates = logTemplates[type];
+            const baseTime = new Date();
+            baseTime.setHours(baseTime.getHours() - 2);
+
+            for (let i = 0; i < count; i++) {
+                const template = templates[Math.floor(Math.random() * templates.length)];
+                const isAttacker = Math.random() < 0.3;
+                const ip = isAttacker ? attackerIPs[Math.floor(Math.random() * attackerIPs.length)] : ipPool[Math.floor(Math.random() * ipPool.length)];
+
+                const time = new Date(baseTime.getTime() + i * 120000);
+
+                logs.push({
+                    id: i + 1,
+                    timestamp: time.toISOString().replace('T', ' ').slice(0, 19),
+                    sourceIP: ip,
+                    type: template.type,
+                    severity: template.severity,
+                    message: template.msg,
+                    mitre: template.mitre,
+                    raw: `[${time.toISOString()}] [${template.severity.toUpperCase()}] ${ip} - ${template.type}: ${template.msg}`
+                });
+            }
+
+            logs.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+            if (type === 'auth') {
+                const bruteIP = attackerIPs[0];
+                const bruteTime = new Date(baseTime.getTime() + 30 * 60000);
+                for (let j = 0; j < 8; j++) {
+                    logs.push({
+                        id: logs.length + 1,
+                        timestamp: new Date(bruteTime.getTime() + j * 30000).toISOString().replace('T', ' ').slice(0, 19),
+                        sourceIP: bruteIP,
+                        type: 'Failed Login',
+                        severity: 'critical',
+                        message: `Authentication failed for user admin (attempt ${j + 1})`,
+                        mitre: 'T1110',
+                        raw: `[${bruteTime.toISOString()}] [CRITICAL] ${bruteIP} - Failed Login: Attempt ${j + 1}`
+                    });
+                }
+            }
+
+            return logs.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+        }
+
+        function loadLogs(type) {
+            currentLogs = generateLogs(type);
+            renderLogs();
+            analyzeThreats();
+            generateSigmaRule(type);
+        }
+
+        function clearLogs() {
+            currentLogs = [];
+            document.getElementById('log-table').innerHTML = '<tr><td colspan="5" class="p-8 text-center text-slate-600">Load logs to begin analysis</td></tr>';
+            document.getElementById('alert-banner').classList.add('hidden');
+            document.getElementById('brute-force-panel').classList.add('hidden');
+            document.getElementById('total-events').textContent = '0';
+            document.getElementById('critical-events').textContent = '0';
+            document.getElementById('warning-events').textContent = '0';
+            document.getElementById('unique-ips').textContent = '0';
+            document.getElementById('timeline').innerHTML = '';
+            document.getElementById('attackers-list').innerHTML = '';
+            document.getElementById('event-types').innerHTML = '';
+            document.getElementById('mitre-mapping').innerHTML = '';
+            document.getElementById('sigma-rule').textContent = 'Load logs to generate detection rules';
+        }
+
+        function renderLogs() {
+            const filter = document.getElementById('severity-filter').value;
+            const filtered = filter === 'all' ? currentLogs : currentLogs.filter(l => l.severity === filter);
+
+            const tbody = document.getElementById('log-table');
+            tbody.innerHTML = filtered.map(log => {
+                const severityColors = {
+                    critical: 'bg-red-900/30 text-red-400 border-red-800',
+                    warning: 'bg-amber-900/30 text-amber-400 border-amber-800',
+                    info: 'bg-slate-800 text-slate-400 border-slate-700'
+                };
+
+                const isAttacker = attackerIPs.includes(log.sourceIP);
+
+                return `
+                    <tr class="hover:bg-slate-800/50 transition-colors">
+                        <td class="p-3 font-mono text-slate-400">${log.timestamp.split(' ')[1]}</td>
+                        <td class="p-3 font-mono ${isAttacker ? 'text-red-400' : 'text-slate-300'}">${log.sourceIP}</td>
+                        <td class="p-3 text-slate-300">${log.type}</td>
+                        <td class="p-3 text-center"><span class="px-2 py-0.5 rounded text-xs border ${severityColors[log.severity]}">${log.severity}</span></td>
+                        <td class="p-3 text-slate-400 truncate max-w-xs">${log.message}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function filterLogs() {
+            renderLogs();
+        }
+
+        function analyzeThreats() {
+            document.getElementById('total-events').textContent = currentLogs.length;
+            document.getElementById('critical-events').textContent = currentLogs.filter(l => l.severity === 'critical').length;
+            document.getElementById('warning-events').textContent = currentLogs.filter(l => l.severity === 'warning').length;
+            document.getElementById('unique-ips').textContent = [...new Set(currentLogs.map(l => l.sourceIP))].length;
+
+            const ipAttempts = {};
+            currentLogs.filter(l => l.type === 'Failed Login').forEach(l => {
+                ipAttempts[l.sourceIP] = (ipAttempts[l.sourceIP] || 0) + 1;
+            });
+
+            const bruteForcers = Object.entries(ipAttempts).filter(([ip, count]) => count >= 5);
+
+            if (bruteForcers.length > 0) {
+                document.getElementById('alert-banner').classList.remove('hidden');
+                document.getElementById('alert-text').textContent = `Brute-force attack detected from ${bruteForcers[0][0]} (${bruteForcers[0][1]} failed attempts)`;
+
+                document.getElementById('brute-force-panel').classList.remove('hidden');
+                document.getElementById('brute-force-details').innerHTML = bruteForcers.map(([ip, count]) => `
+                    <div class="bg-slate-950 rounded-lg p-4 border border-red-800">
+                        <div class="text-red-400 font-mono text-sm mb-1">${ip}</div>
+                        <div class="text-2xl font-bold text-red-400">${count}</div>
+                        <div class="text-xs text-slate-500">Failed login attempts</div>
+                        <div class="text-xs text-red-500 mt-2">⚠️ Recommend: Block IP immediately</div>
+                    </div>
+                `).join('');
+            }
+
+            const criticalEvents = currentLogs.filter(l => l.severity === 'critical').slice(-5);
+            document.getElementById('timeline').innerHTML = criticalEvents.map(e => `
+                <div class="flex items-center gap-2 p-2 rounded bg-slate-950 border-l-2 border-red-500">
+                    <span class="text-xs font-mono text-slate-500">${e.timestamp.split(' ')[1]}</span>
+                    <span class="text-xs text-red-400">${e.type}</span>
+                </div>
+            `).join('');
+
+            const attackerCounts = {};
+            currentLogs.forEach(l => {
+                attackerCounts[l.sourceIP] = (attackerCounts[l.sourceIP] || 0) + 1;
+            });
+
+            const sortedAttackers = Object.entries(attackerCounts).sort((a, b) => b[1] - a[1]).slice(0, 5);
+            document.getElementById('attackers-list').innerHTML = sortedAttackers.map(([ip, count]) => {
+                const isAttacker = attackerIPs.includes(ip);
+                return `
+                    <div class="flex justify-between items-center p-2 rounded ${isAttacker ? 'bg-red-900/20 border border-red-800' : 'bg-slate-950'}">
+                        <span class="font-mono text-xs ${isAttacker ? 'text-red-400' : 'text-slate-400'}">${ip}</span>
+                        <span class="text-xs text-slate-500">${count} events</span>
+                    </div>
+                `;
+            }).join('');
+
+            const typeCounts = {};
+            currentLogs.forEach(l => { typeCounts[l.type] = (typeCounts[l.type] || 0) + 1; });
+            const maxType = Math.max(...Object.values(typeCounts), 1);
+
+            document.getElementById('event-types').innerHTML = Object.entries(typeCounts).map(([type, count]) => `
+                <div class="flex items-center gap-2">
+                    <span class="text-xs text-slate-400 w-24 truncate">${type}</span>
+                    <div class="flex-1 bg-slate-800 rounded-full h-2 overflow-hidden">
+                        <div class="bg-violet-500 h-full rounded-full transition-all" style="width: ${(count/maxType)*100}%"></div>
+                    </div>
+                    <span class="text-xs text-slate-500 w-6 text-right">${count}</span>
+                </div>
+            `).join('');
+
+            const mitreCounts = {};
+            currentLogs.filter(l => l.mitre).forEach(l => { mitreCounts[l.mitre] = (mitreCounts[l.mitre] || 0) + 1; });
+
+            const mitreNames = {
+                'T1110': 'Brute Force',
+                'T1078': 'Valid Accounts',
+                'T1548': 'Abuse Elevation',
+                'T1098': 'Account Manipulation',
+                'T1136': 'Create Account',
+                'T1190': 'Exploit Public-Facing',
+                'T1046': 'Network Service Scanning',
+                'T1498': 'Network Denial of Service',
+                'T1071': 'Application Layer Protocol',
+                'T1105': 'Ingress Tool Transfer',
+                'T1189': 'Drive-by Compromise',
+                'T1083': 'File and Directory Discovery',
+                'T1496': 'Resource Hijacking',
+                'T1505': 'Server Software Component'
+            };
+
+            document.getElementById('mitre-mapping').innerHTML = Object.entries(mitreCounts).map(([id, count]) => `
+                <div class="bg-slate-950 rounded-lg p-3 border border-violet-800 text-center">
+                    <div class="text-violet-400 font-mono text-sm font-bold">${id}</div>
+                    <div class="text-xs text-slate-500 mt-1">${mitreNames[id] || 'Unknown'}</div>
+                    <div class="text-xs text-violet-400 mt-1">${count} events</div>
+                </div>
+            `).join('');
+        }
+
+        function generateSigmaRule(type) {
+            let rule = '';
+
+            if (type === 'auth') {
+                rule = `title: Brute Force Attack Detection
+logsource:
+  product: linux
+  service: auth
+detection:
+  selection:
+    - type: 'Failed Login'
+  timeframe: 5m
+  condition: selection | count() >= 5
+level: critical
+---
+# Auto-generated from SIEM-SIGHT analysis
+# Detects 5+ failed logins within 5 minutes from same IP`;
+            } else if (type === 'firewall') {
+                rule = `title: Port Scan Detection
+logsource:
+  product: firewall
+detection:
+  selection:
+    - type: 'Port Scan'
+  condition: selection
+level: high
+---
+# Auto-generated from SIEM-SIGHT analysis
+# Detects rapid sequential port connections`;
+            } else {
+                rule = `title: Web Attack Detection
+logsource:
+  product: webserver
+  service: accesslog
+detection:
+  selection:
+    - type: 
+      - 'SQL Injection'
+      - 'Directory Traversal'
+      - 'XSS Attempt'
+  condition: selection
+level: critical
+---
+# Auto-generated from SIEM-SIGHT analysis
+# Detects common web application attacks`;
+            }
+
+            document.getElementById('sigma-rule').textContent = rule;
+        }
+    </script>
+</body>
+</html>
